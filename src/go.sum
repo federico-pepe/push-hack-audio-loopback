@@ -1,0 +1,4 @@
+github.com/federico-pepe/ableton-push-hack/core v0.2.0 h1:sgrWbm/UW85poStUQibwhTzwSM0Cnt04xYo6KNdlwPk=
+github.com/federico-pepe/ableton-push-hack/core v0.2.0/go.mod h1:jIGdPTG4YcT5Zt8gdsKsvjW+hP32nnquSWYR1ojQ03I=
+golang.org/x/sys v0.27.0 h1:wBqf8DvsY9Y/2P8gAfPDEYNuS30J4lPHJxXSb/nJZ+s=
+golang.org/x/sys v0.27.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
