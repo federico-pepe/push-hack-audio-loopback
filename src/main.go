@@ -32,22 +32,14 @@ const (
 	// card, cross-wired to each other (device 0's playback arrives on
 	// device 1's capture and vice versa) — that pairing is the whole
 	// mechanism, not a redundant duplicate, so it can't be reduced to
-	// one device without losing the loopback function itself. Only one
-	// side is meant for a human to pick in Live's own audio device list;
-	// the other (feedDevice) is meant to be opened directly, by hw:
-	// address, by whatever process feeds it (push-braids-host, or
-	// loopback_feed).
-	//
-	// Both devices still appear in Live's own device list regardless —
-	// that list comes from the driver's ALSA-level hint/enumeration data
-	// (what aloop-rename.patch's per-device pcm->name naming addresses),
-	// not from filesystem permissions, so locking feedDevice's raw
-	// device nodes to root-only does NOT hide it from that list. It
-	// still earns its keep as a second, independent layer: if someone
-	// picks the wrong ("do not select") entry in Live by mistake anyway,
-	// Live gets a clean permission failure opening it instead of two
-	// processes fighting over the same device.
-	feedDevice = 1
+	// one device without losing the loopback function itself. Device 0
+	// is the one a human picks in Live's own audio device list; device 1
+	// is meant to be opened directly, by hw: address, by whatever
+	// process feeds it (push-braids-host, or loopback_feed). Both
+	// devices appear in Live's own device list regardless — that list
+	// comes from the driver's ALSA-level hint/enumeration data, not from
+	// filesystem permissions, and there is no way to hide device 1 from
+	// it at this layer.
 )
 
 func main() {
@@ -74,12 +66,7 @@ func runOnce(hackDir string) {
 		}
 	}()
 
-	if idx, ok := cardIndex(cardID); ok {
-		// Already loaded and correctly named — re-apply the permission
-		// lock every tick anyway (cheap, idempotent), in case something
-		// external reset it (e.g. a udev rule re-triggering on a device
-		// re-enumeration).
-		restrictFeedDevice(idx)
+	if cardPresent(cardID) {
 		return
 	}
 
@@ -117,10 +104,6 @@ func runOnce(hackDir string) {
 	}
 
 	log.Printf("loaded %s (%s)", koPath, insmodArgs)
-
-	if idx, ok := cardIndex(cardID); ok {
-		restrictFeedDevice(idx)
-	}
 }
 
 func koPathForRunningKernel(hackDir string) (string, error) {
@@ -204,20 +187,6 @@ func cardIndex(id string) (int, bool) {
 		}
 	}
 	return 0, false
-}
-
-// restrictFeedDevice locks feedDevice's raw device nodes to root-only, so
-// only this hack's own writer (which runs as root, like every
-// catalog-installed hack) can open it — a human picking an audio device
-// in Live's own preferences (running as the unprivileged `ableton` user)
-// won't see it as available. See feedDevice's doc comment above.
-func restrictFeedDevice(cardIdx int) {
-	for _, suffix := range []string{"p", "c"} {
-		path := fmt.Sprintf("/dev/snd/pcmC%dD%d%s", cardIdx, feedDevice, suffix)
-		if err := os.Chmod(path, 0o600); err != nil && !os.IsNotExist(err) {
-			log.Printf("restricting %s: %v", path, err)
-		}
-	}
 }
 
 func moduleLoaded(name string) bool {

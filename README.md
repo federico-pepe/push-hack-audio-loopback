@@ -25,12 +25,12 @@ The Loopback driver always creates two PCM devices per card, cross-wired
 to each other (device 0's playback arrives on device 1's capture, and
 back). That pairing is the whole mechanism — a single device can't loop
 audio to itself. Only device 0 ("PCM") is meant for you to pick in Live's
-own audio preferences; device 1 ("PCM - feed, do not select") is meant to
-be opened directly, by `hw:` address, by whatever process feeds it (e.g.
+own audio preferences; device 1 ("Loopback PCM") is meant to be opened
+directly, by `hw:` address, by whatever process feeds it (e.g.
 [push-hack-braids](https://github.com/federico-pepe/push-hack-braids)).
-This service locks device 1's raw device nodes to root-only right after
-every load, so picking it by mistake in Live fails cleanly instead of two
-processes fighting over the same device.
+Both devices still show up in Live's own device list — that list comes
+from the driver's ALSA-level enumeration data, not from naming or
+filesystem permissions, so there is no way to hide device 1 from it.
 
 ## Building a module for a different kernel
 
