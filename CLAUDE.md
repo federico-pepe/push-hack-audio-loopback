@@ -2,6 +2,12 @@
 
 Guidance for Claude Code when it works in this repository.
 
+## Push family context
+
+Shared facts for all Push repos (repo map, git identity, `core/` pinning, cross-repo hardware facts):
+
+@~/.claude/push-family.md
+
 ## Building the `snd-aloop.ko` kernel module
 
 The README's Docker build recipe can fail with an error like this:
