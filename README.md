@@ -32,6 +32,45 @@ Both devices still show up in Live's own device list — that list comes
 from the driver's ALSA-level enumeration data, not from naming or
 filesystem permissions, so there is no way to hide device 1 from it.
 
+## Audio bus mixer
+
+ALSA lets only one process write to a loopback stream. Without help, two audio hacks
+(for example Braids and MachineModule) cannot play at the same time: the second one
+gets "Device or resource busy".
+
+This hack solves that. It owns the write side of the card and runs a mixer. An audio
+hack does not open `hw:PHVAudio,1,0` any more. It connects to the mixer
+(`core/audiobus`) and sends its audio. The mixer adds the audio of all hacks and writes
+one stream, which Live reads.
+
+- The mixer follows the format that Live negotiated, and reopens the card when it changes.
+- Each hack plays on its own channel pair. The mixer remembers the pair of each hack in
+  `audio-bus-pairs.json`, next to `hack.json`.
+- A hack that finds no mixer writes to the card directly, as before. Only one hack can do
+  this at a time.
+- The web page of this hack (see "Web UI" in the Push Hack menu) shows the mixer state
+  and the connected hacks, with their pair, level and underruns.
+- You still need an audio track in Live that listens to the pair of the hack. The hack's
+  own web page can create it.
+
+The design is in
+[docs/audio-bus.md](https://github.com/federico-pepe/ableton-push-hack/blob/main/docs/audio-bus.md)
+in the main repository.
+
+## Building
+
+The mixer needs cgo and libasound, so build in Docker (like push-braids):
+
+```bash
+make build       # build/push-audio-loopback, linux/amd64, via Docker
+make test        # go vet and go test -race in the same container
+make test-local  # the portable tests on this machine (ALSA code is stubbed)
+```
+
+Until `core/audiobus` has a release tag, the Makefile builds against a local
+`ableton-push-hack/core` checkout (`CORE=...`). After the tag, bump the `core` pin in
+`src/go.mod` and remove the `CORE` lines.
+
 ## Building a module for a different kernel
 
 Needs the GPL source Ableton publishes for Push 3's firmware (request

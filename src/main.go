@@ -3,6 +3,10 @@
 // hack's README with a small service that self-heals: load the kernel
 // module, watch that it stays loaded, and retry if it goes away.
 //
+// It also owns the write side of the card: the audio bus mixer (mixer.go)
+// adds the audio of every audio hack that connects and writes the one stream
+// Live reads. A small web page (web.go) shows who is connected.
+//
 // It is a catalog-installed hack: the store always runs it as
 // "push-audio-loopback -config hack.json" with no other arguments, so all
 // of its logic lives here rather than in shell.
@@ -14,11 +18,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/federico-pepe/ableton-push-hack/core/alsapcm"
 	"github.com/federico-pepe/ableton-push-hack/core/alsaseq"
+	"github.com/federico-pepe/ableton-push-hack/core/audiobus"
+	"github.com/federico-pepe/ableton-push-hack/core/hackcfg"
 )
 
 const (
@@ -26,7 +34,11 @@ const (
 	moduleName = "snd_aloop"
 	insmodArgs = "id=" + cardID + " timer_source=A3.0.0"
 	pollEvery  = 30 * time.Second
-	refModule  = "snd-usb-audio.ko" // known-loaded system module, for vermagic comparison
+	// defaultWebPort is only a fallback: the catalog assigns the real port.
+	defaultWebPort = 7719
+	// pairsFile remembers each audio hack's channel pair across reboots.
+	pairsFile = "audio-bus-pairs.json"
+	refModule = "snd-usb-audio.ko" // known-loaded system module, for vermagic comparison
 
 	// The Loopback driver always creates exactly two PCM devices per
 	// card, cross-wired to each other (device 0's playback arrives on
@@ -49,10 +61,43 @@ func main() {
 
 	alsaseq.WaitForBootSettle()
 
-	for {
-		runOnce(hackDir)
-		time.Sleep(pollEvery)
+	quit := make(chan struct{})
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	go func() { <-sig; close(quit) }()
+
+	go func() {
+		for {
+			runOnce(hackDir)
+			if !sleepOrQuit(pollEvery, quit) {
+				return
+			}
+		}
+	}()
+
+	srv := audiobus.NewServer(audiobus.DefaultDir)
+	srv.PairsPath = filepath.Join(hackDir, pairsFile)
+	if err := srv.Listen(); err != nil {
+		// Without the bus the hacks fall back to the card, so keep running.
+		log.Printf("audio bus: %v", err)
+	} else {
+		log.Printf("audio bus on %s", audiobus.SocketPath(audiobus.DefaultDir))
 	}
+	st := &mixStats{}
+	st.setState("waiting for the card")
+	go runMixer(srv, st, quit)
+
+	hcfg, err := hackcfg.Load(*configPath, defaultWebPort)
+	if err != nil {
+		log.Printf("%v (web port %d)", err, defaultWebPort)
+		hcfg.Port = defaultWebPort
+	}
+	go runWeb(hcfg.Port, srv, st, quit)
+
+	<-quit
+	log.Print("stopping")
+	srv.Close()
+	time.Sleep(200 * time.Millisecond) // let the mixer close the card
 }
 
 // runOnce makes one attempt to reach "PHVAudio card loaded", logging state

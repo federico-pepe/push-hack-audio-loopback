@@ -26,18 +26,21 @@ jobs:
           fi
           echo "Version check passed: $TAG_VERSION"
 
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - name: Build
+      # The mixer writes the card with ALSA, so the binary needs cgo and
+      # libasound. Build it in the same Docker image the Makefile uses, so it
+      # links against a glibc that Push 3's AbletonOS has (a bare go build on
+      # the runner would not run on the device).
+      - name: Build (cgo, via Docker)
         run: |
           mkdir -p dist/push-audio-loopback
-          cd src
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w" -o ../dist/push-audio-loopback/push-audio-loopback .
-          cd ..
+          docker run --rm --platform linux/amd64 \
+            -v "$PWD/src":/work -w /work golang:1.25-bookworm \
+            sh -c "apt-get update -qq && apt-get install -qq -y libasound2-dev >/dev/null && \
+              go vet ./... && go test ./... && \
+              CGO_ENABLED=1 go build -ldflags '-s -w -linkmode external -extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2' -o /work/push-audio-loopback . && \
+              chmod +x /work/push-audio-loopback"
+          cp src/push-audio-loopback dist/push-audio-loopback/push-audio-loopback
           cp hack.json dist/push-audio-loopback/hack.json
-          chmod +x dist/push-audio-loopback/push-audio-loopback
           # Prebuilt kernel modules (one per Push kernel version) are
           # maintainer-provided binaries, checked into ko/ — CI cannot build
           # them (needs Ableton's gitignored GPL source tarball), it only

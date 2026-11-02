@@ -1,3 +1,5 @@
+//go:build linux && cgo
+
 /* bridge.h - ALSA PCM playback (the only C in the module). */
 #ifndef MIXER_BRIDGE_H
 #define MIXER_BRIDGE_H

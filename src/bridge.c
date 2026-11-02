@@ -1,3 +1,5 @@
+//go:build linux && cgo
+
 #include "bridge.h"
 
 #include <alsa/asoundlib.h>
