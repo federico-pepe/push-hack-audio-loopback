@@ -67,10 +67,6 @@ make test        # go vet and go test -race in the same container
 make test-local  # the portable tests on this machine (ALSA code is stubbed)
 ```
 
-Until `core/audiobus` has a release tag, the Makefile builds against a local
-`ableton-push-hack/core` checkout (`CORE=...`). After the tag, bump the `core` pin in
-`src/go.mod` and remove the `CORE` lines.
-
 ## Building a module for a different kernel
 
 Needs the GPL source Ableton publishes for Push 3's firmware (request

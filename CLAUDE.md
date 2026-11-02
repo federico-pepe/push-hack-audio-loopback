@@ -62,8 +62,7 @@ instead of opening the card; without a mixer they write to the card themselves.
 - The binary now needs cgo and libasound (`bridge.c`, `pcm_cgo.go`). `pcm_stub.go` keeps the package
   buildable and testable without them. Build and test with `make build` / `make test` (Docker).
 - The release workflow builds in the same Docker image. A plain `CGO_ENABLED=0 go build` no longer works.
-- `core/audiobus` is not in a tagged core yet: the Makefile uses a local core checkout (`CORE`).
-  After the tag, bump `src/go.mod` and remove the `CORE` lines.
+- `core/audiobus` comes from `core/v0.5.3` (pinned in `src/go.mod`).
 - `web.go` serves `GET /api/status` and a status page. The port comes from the catalog (`hackcfg`), 7719 as a fallback.
 - Pairs are saved in `audio-bus-pairs.json` next to `hack.json`.
 - Design and plan: `docs/audio-bus.md` in ableton-push-hack.
