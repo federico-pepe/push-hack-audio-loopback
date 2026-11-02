@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audio Loopback</title>
+<style>
+:root{--bg:#15171a;--panel:#1d2024;--line:#2c3036;--text:#d9dde2;--dim:#8b929b;--ok:#5bd778;--bad:#ff5a5a;--bar:#ff6a1a}
+@media (prefers-color-scheme:light){:root{--bg:#e9eaec;--panel:#f6f6f7;--line:#c9ccd1;--text:#1d2024;--dim:#5d646d;--ok:#1f8a3b;--bad:#c62828;--bar:#d9500a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif}
+main{max-width:720px;margin:0 auto;padding:16px;display:grid;gap:16px}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
+h1{font-size:15px;margin:0 0 4px;letter-spacing:.08em}
+h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
+.note{color:var(--dim);font-size:12px}
+#state.ok{color:var(--ok)} #state.bad{color:var(--bad)}
+table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
+th{color:var(--dim);font-weight:500}
+.meter{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;width:120px}
+.meter i{display:block;height:100%;background:var(--bar);width:0}
+</style>
+</head>
+<body>
+<main>
+<section>
+  <h1>AUDIO LOOPBACK</h1>
+  <div id="state">connecting...</div>
+  <div class="note" id="fmt"></div>
+</section>
+<section>
+  <h2>Audio hacks on the mixer</h2>
+  <table>
+    <thead><tr><th>Hack</th><th>Channels</th><th>Level</th><th>Underruns</th></tr></thead>
+    <tbody id="clients"></tbody>
+  </table>
+  <p class="note" id="none"></p>
+  <p class="note">Each audio hack plays through this mixer, so several can play at once. Pick the channel pair in the hack's own page. In Live, enable the pair on the Push Hack Virtual Audio input and give a track that input.</p>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function draw(s){
+  const el=$('state');el.textContent=s.running?'Mixer running':'Mixer: '+s.state;el.className=s.running?'ok':'bad';
+  $('fmt').textContent=s.running?s.channels+' channels, '+s.rate+' Hz, '+s.period+' frames per block. Slowest mix '+s.worst_mix_us+' us. Write errors '+s.write_errors+'.':'';
+  const tb=$('clients');tb.innerHTML='';
+  s.clients.forEach(c=>{
+    const tr=document.createElement('tr');
+    const name=document.createElement('td');name.textContent=c.name;
+    const ch=document.createElement('td');ch.textContent=(c.pair+1)+'-'+(c.pair+2);
+    const lv=document.createElement('td');lv.innerHTML='<span class="meter"><i></i></span>';lv.querySelector('i').style.width=Math.min(100,c.peak*100)+'%';
+    const un=document.createElement('td');un.textContent=c.underruns;
+    tr.append(name,ch,lv,un);tb.append(tr);
+  });
+  $('none').textContent=s.clients.length?'':'No audio hack is connected.';
+}
+async function tick(){
+  try{draw(await fetch('/api/status').then(r=>r.json()))}catch(e){$('state').textContent='no answer';$('state').className='bad'}
+}
+tick();setInterval(tick,1000);
+</script>
+</body>
+</html>

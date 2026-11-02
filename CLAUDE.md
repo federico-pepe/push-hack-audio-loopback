@@ -51,3 +51,18 @@ its raw device nodes. Neither hid it from Live's list — do not
 re-attempt either approach without a way to change ALSA's own
 enumeration behavior (which would need a change to ALSA core, not to
 this driver).
+
+## Audio bus mixer (`mixer.go`, `web.go`, `pcm_cgo.go`)
+
+This service also owns the write side of `hw:PHVAudio,1,0`. `mixer.go` runs an `audiobus.Server`
+(`core/audiobus`), follows Live's negotiated format with `alsapcm.ReadHWParams`, mixes every client
+in float and writes one S16 block per period. Audio hacks (Braids, MachineModule) connect to it
+instead of opening the card; without a mixer they write to the card themselves.
+
+- The binary now needs cgo and libasound (`bridge.c`, `pcm_cgo.go`). `pcm_stub.go` keeps the package
+  buildable and testable without them. Build and test with `make build` / `make test` (Docker).
+- The release workflow builds in the same Docker image. A plain `CGO_ENABLED=0 go build` no longer works.
+- `core/audiobus` comes from `core/v0.5.3` (pinned in `src/go.mod`).
+- `web.go` serves `GET /api/status` and a status page. The port comes from the catalog (`hackcfg`), 7719 as a fallback.
+- Pairs are saved in `audio-bus-pairs.json` next to `hack.json`.
+- Design and plan: `docs/audio-bus.md` in ableton-push-hack.
