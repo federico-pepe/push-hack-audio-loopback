@@ -88,6 +88,66 @@ func runWeb(port int, srv *audiobus.Server, st *mixStats, ctl *outputCtl, quit <
 		}
 		httpx.JSON(w, map[string]string{"mode": ctl.Mode()})
 	})
+	// GET /api/matrix: the Link channels, the inputs of the hacks and the routes.
+	mux.HandleFunc("GET /api/matrix", func(w http.ResponseWriter, r *http.Request) {
+		rt := ctl.router.Load()
+		if rt == nil {
+			httpx.JSON(w, matrixReply{Channels: []linkChannel{}, Inputs: []inputStatus{}})
+			return
+		}
+		httpx.JSON(w, rt.Matrix())
+	})
+	// POST /api/route {"hack","input","channel_id"}: connect an input to a
+	// channel. A null or empty channel_id removes the route. JSON only.
+	mux.HandleFunc("POST /api/route", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "send application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var req struct {
+			Hack      string  `json:"hack"`
+			Input     string  `json:"input"`
+			ChannelID *string `json:"channel_id"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil || req.Hack == "" || req.Input == "" {
+			http.Error(w, "bad JSON: hack and input are needed", http.StatusBadRequest)
+			return
+		}
+		if ctl.routes == nil {
+			http.Error(w, "no route store", http.StatusInternalServerError)
+			return
+		}
+		if req.ChannelID == nil || *req.ChannelID == "" {
+			if err := ctl.routes.remove(req.Hack, req.Input); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			httpx.JSON(w, map[string]bool{"ok": true})
+			return
+		}
+		rt := ctl.router.Load()
+		if rt == nil {
+			http.Error(w, "the output is not Link", http.StatusConflict)
+			return
+		}
+		var ch *linkChannel
+		for _, c := range rt.Channels() {
+			if c.ID == *req.ChannelID {
+				c := c
+				ch = &c
+				break
+			}
+		}
+		if ch == nil {
+			http.Error(w, "no such channel", http.StatusNotFound)
+			return
+		}
+		if err := ctl.routes.set(route{Hack: req.Hack, Input: req.Input, ChannelID: ch.ID, Peer: ch.Peer, Channel: ch.Name}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		httpx.JSON(w, map[string]bool{"ok": true})
+	})
 	mux.HandleFunc("/", httpx.ServeEmbedded(webFS, "web/index.html"))
 	hs := httpx.NewServer(fmt.Sprintf(":%d", port), httpx.WithLogging(httpx.WithCORS("GET, POST, OPTIONS", mux)))
 	go func() {

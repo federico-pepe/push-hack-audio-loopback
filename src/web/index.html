@@ -81,6 +81,27 @@ td { font-variant-numeric: tabular-nums; }
 .meter i { display: block; height: 100%; background: var(--green); width: 0; }
 .listen { color: var(--green); }
 .nolisten { color: var(--grey-mid); }
+
+/* Matrix: Link channels (rows) to the inputs of the hacks (columns) */
+#matrixsec[hidden] { display: none; }
+.mx { overflow-x: auto; }
+.mx table { width: auto; min-width: 100%; }
+.mx th, .mx td { text-align: center; padding: 8px 10px; white-space: nowrap; }
+.mx th:first-child, .mx td:first-child { text-align: left; padding-left: 0; }
+.mx th small { display: block; text-transform: none; letter-spacing: 0; font-size: 11px; }
+.mx tr.peer td { color: var(--grey-mid); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding-top: 14px; }
+.mx tr.gone td:first-child { color: var(--red); }
+.mx tr.stat td { font-size: 12px; color: var(--grey-mid); vertical-align: top; }
+.mx tr.stat td:first-child { text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.mx .away { opacity: 0.5; }
+.dot {
+  width: 20px; height: 20px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: none; border: 1px solid var(--grey-mid); transition: background 0.1s, border-color 0.1s;
+}
+.dot:hover { border-color: var(--blue); }
+.dot.on { background: var(--blue); border-color: var(--blue); }
+.mx .bad { color: var(--red); }
+.mx .okc { color: var(--green); }
 </style>
 </head>
 <body>
@@ -113,6 +134,12 @@ td { font-variant-numeric: tabular-nums; }
   </table>
   <p class="note" id="none"></p>
   <p class="note" id="help"></p>
+</section>
+<section id="matrixsec" hidden>
+  <h2>Link inputs</h2>
+  <div class="mx" id="matrix"></div>
+  <p class="note" id="matrixnote"></p>
+  <p class="note" id="matrixerr" style="color:var(--red)"></p>
 </section>
 </main>
 
@@ -178,9 +205,123 @@ function draw(s) {
   $('none').textContent = s.clients.length ? '' : 'No audio hack is connected.';
 }
 
+// ---- matrix: names come from other devices, so the DOM is built with textContent only ----
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+async function setRoute(hack, input, channelId) {
+  $('matrixerr').textContent = '';
+  try {
+    const r = await fetch('/api/route', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hack, input, channel_id: channelId})});
+    if (!r.ok) $('matrixerr').textContent = (await r.text()).trim();
+  } catch (e) { $('matrixerr').textContent = 'no answer'; }
+  tick();
+}
+
+function stateText(rt) {
+  if (!rt) return ['', ''];
+  if (rt.state === 'ok') return ['ok', 'okc'];
+  if (rt.state === 'waiting' || rt.state === 'hack not connected') return [rt.state, ''];
+  return [rt.state, 'bad'];
+}
+
+function drawMatrix(m, link) {
+  const sec = $('matrixsec');
+  sec.hidden = !link;
+  if (!link) return;
+  const box = $('matrix');
+  box.textContent = '';
+  const cols = m.inputs || [];
+  if (!cols.length) {
+    $('matrixnote').textContent = 'No hack has an audio input yet. A hack declares its inputs when it connects.';
+    return;
+  }
+  $('matrixnote').textContent = 'Click a dot to record that channel into a hack input. Nothing is connected until you do. In Live, pick the channels of the hacks in the input of an audio track.';
+
+  // Rows: channels grouped by peer, Push (Live) first. Routes whose channel is gone get a row of their own.
+  const peers = new Map();
+  (m.channels || []).forEach(c => {
+    if (!peers.has(c.peer)) peers.set(c.peer, []);
+    peers.get(c.peer).push({id: c.id, name: c.name, gone: false});
+  });
+  cols.forEach(c => {
+    const rt = c.route;
+    if (rt && rt.state === 'missing') {
+      if (!peers.has(rt.peer)) peers.set(rt.peer, []);
+      if (!peers.get(rt.peer).some(x => x.id === rt.channel_id))
+        peers.get(rt.peer).push({id: rt.channel_id, name: rt.channel, gone: true});
+    }
+  });
+  const order = [...peers.keys()].sort((a, b) => (a === 'Push' ? -1 : b === 'Push' ? 1 : a.localeCompare(b)));
+
+  const t = el('table');
+  const head = el('tr');
+  head.append(el('th', '', 'Channel'));
+  cols.forEach(c => {
+    const th = el('th', c.connected ? '' : 'away', c.hack);
+    th.append(el('small', '', c.input));
+    head.append(th);
+  });
+  t.append(head);
+
+  order.forEach(peer => {
+    const pr = el('tr', 'peer');
+    const pc = el('td', '', peer);
+    pc.colSpan = cols.length + 1;
+    pr.append(pc);
+    t.append(pr);
+    peers.get(peer).forEach(ch => {
+      const tr = el('tr', ch.gone ? 'gone' : '');
+      tr.append(el('td', '', ch.name + (ch.gone ? ' (missing)' : '')));
+      cols.forEach(c => {
+        const td = el('td', c.connected ? '' : 'away');
+        const on = c.route && c.route.channel_id === ch.id;
+        const b = el('button', 'dot' + (on ? ' on' : ''));
+        b.title = on ? 'Disconnect' : 'Connect';
+        b.setAttribute('aria-label', (on ? 'Disconnect ' : 'Connect ') + ch.name + ' to ' + c.hack + ' ' + c.input);
+        b.onclick = () => setRoute(c.hack, c.input, on ? null : ch.id);
+        td.append(b);
+        tr.append(td);
+      });
+      t.append(tr);
+    });
+  });
+
+  // Status row for each input.
+  const sr = el('tr', 'stat');
+  sr.append(el('td', '', 'Status'));
+  cols.forEach(c => {
+    const td = el('td', c.connected ? '' : 'away');
+    const rt = c.route;
+    if (!rt) { td.textContent = c.connected ? '-' : 'away'; }
+    else {
+      const [txt, cls] = stateText(rt);
+      td.append(el('div', cls, txt));
+      if (rt.state === 'ok' || rt.state === 'waiting') {
+        const mt = el('span', 'meter'); const i = el('i'); i.style.width = Math.min(100, rt.peak * 100) + '%';
+        mt.append(i); td.append(mt);
+        td.append(el('div', '', rt.underruns + ' underruns, ' + rt.dropped_frames + ' dropped'));
+        if (rt.refused) td.append(el('div', 'bad', rt.refused + ' refused by the hack'));
+      }
+    }
+    sr.append(td);
+  });
+  t.append(sr);
+  box.append(t);
+}
+
 async function tick() {
-  try { draw(await fetch('/api/status').then(r => r.json())); }
-  catch (e) { $('state').textContent = 'no answer'; $('state').className = 'bad'; }
+  try {
+    const s = await fetch('/api/status').then(r => r.json());
+    draw(s);
+    if (s.mode === 'link') drawMatrix(await fetch('/api/matrix').then(r => r.json()), true);
+    else drawMatrix({}, false);
+  } catch (e) { $('state').textContent = 'no answer'; $('state').className = 'bad'; }
 }
 tick(); setInterval(tick, 1000);
 </script>

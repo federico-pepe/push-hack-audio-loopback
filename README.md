@@ -81,6 +81,23 @@ Each channel is stamped with a sample counter that starts 40 ms after "now". Liv
 buffers that carry its own timestamps, and it plays a clock-stamped stream with glitches.
 The code is in `src/linkshim.cpp` and `src/link.go`.
 
+### Link inputs: record a Link channel into a hack
+
+An audio hack can also receive audio. It declares inputs on the bus (`audiobus.OpenWithInputs`, `Client.Read`).
+The **Link inputs** section of the web page is a matrix: the rows are the Link channels (the tracks, returns and Main of Live,
+and the channels of the hacks), the columns are the inputs of the hacks. Click a dot to connect a channel to an input. Click it again to disconnect.
+
+- Nothing is connected by default. Any device on the Wi-Fi can offer a Link channel, so you choose.
+- Routes are saved in `link-routes.json`, next to `hack.json`. A route connects again when its hack or its channel comes back.
+- Each input shows its state (`ok`, `waiting`, `missing`, `hack not connected`, `rate ... not supported`), a level meter, underruns and dropped frames.
+- Only 44100 Hz channels play. Live sends 44100 Hz here, also when its own rate is higher.
+- The matrix works in Link mode only. In Link mode you can also drive it with `GET /api/matrix` and `POST /api/route`.
+- Play-out: the input starts when 4 periods wait, audio above 6 periods is dropped, and an empty ring gives silence (`src/jitter.go`).
+- This hack does not record or sample anything by itself. A hack that wants audio uses the inputs. See `docs/adding-a-hack.md` in the main repository.
+
+Test tools (run by hand over SSH, not part of the service): `push-audio-loopback -linkrec "<channel name>" -secs 20 -out /tmp/rec.wav` records one Link channel to a WAV file.
+`abusrec` (in `core/audiobus/cmd`) records an input of a route to a WAV file.
+
 **Licence note.** The Link SDK (`src/third_party/link`, pinned to tag `Link-4.1.1`) is
 GPL v2 or later, or proprietary from Ableton. A binary that links it is GPL v2 or later.
 This repository has no licence file yet. This must be decided before a release.

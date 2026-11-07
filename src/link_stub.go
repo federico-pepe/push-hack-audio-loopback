@@ -26,3 +26,30 @@ func (k *linkSink) Write(samples []int16, frames, rate, leadMs int) (bool, error
 }
 func (k *linkSink) Reanchors() uint64 { return 0 }
 func (k *linkSink) Close()            {}
+
+type linkChannel struct {
+	ID     string `json:"id"`
+	Name   string `json:"name"`
+	PeerID string `json:"peer_id"`
+	Peer   string `json:"peer"`
+}
+
+func (l *linkPeer) Channels() ([]linkChannel, error) { return nil, errNoLink }
+
+type linkSource struct{}
+
+type linkSourceStats struct {
+	Buffers, Frames           uint64
+	BadRate, BadFormat, Overs uint64
+	RateSeen, ChannelsSeen    int
+	Peak                      float32
+}
+
+func (l *linkPeer) NewSource(id string, rate, ringFrames int) (*linkSource, error) {
+	return nil, errNoLink
+}
+func (k *linkSource) Fill() int                          { return 0 }
+func (k *linkSource) Skip(frames int)                    {}
+func (k *linkSource) Close()                             {}
+func (k *linkSource) Read(out []float32, frames int) int { return 0 }
+func (k *linkSource) Stats() linkSourceStats             { return linkSourceStats{} }

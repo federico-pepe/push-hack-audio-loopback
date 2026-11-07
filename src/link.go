@@ -58,6 +58,11 @@ type outputCtl struct {
 
 	mu    sync.Mutex
 	sinks []sinkInfo
+
+	// routes are saved in every mode. The router exists only while the output
+	// is Link: it holds the sources.
+	routes *routeStore
+	router atomic.Pointer[router]
 }
 
 // sinkInfo is one Link channel, for the status page.
@@ -198,6 +203,16 @@ func runLink(c *outputCtl, srv *audiobus.Server, st *mixStats, quit <-chan struc
 			k.Close()
 		}
 	}()
+	// Inputs of the hacks: the router moves Link channels into them.
+	if c.routes == nil {
+		c.routes = newRouteStore(os.DevNull)
+	}
+	rt := newRouter(c.routes, peerNet{peer})
+	c.router.Store(rt)
+	defer func() {
+		c.router.Store(nil)
+		rt.Close()
+	}()
 	mix := make([]float32, linkPeriod*linkChannels)
 	block := make([]int16, linkPeriod*2)
 	blockDur := time.Duration(linkPeriod) * time.Second / linkRate
@@ -248,6 +263,7 @@ func runLink(c *outputCtl, srv *audiobus.Server, st *mixStats, quit <-chan struc
 				log.Printf("link: channel %q closed", name)
 			}
 		}
+		rt.tick(busInputs(srv), time.Now())
 		if d := int64(time.Since(t0)); d > st.worstNs.Load() {
 			st.worstNs.Store(d)
 		}
@@ -271,4 +287,17 @@ func runLink(c *outputCtl, srv *audiobus.Server, st *mixStats, quit <-chan struc
 				time.Duration(st.worstNs.Swap(0)), c.Sinks())
 		}
 	}
+}
+
+// busInputs lists the inputs that the connected hacks declared.
+func busInputs(srv *audiobus.Server) []inputRef {
+	ins := srv.Inputs()
+	if len(ins) == 0 {
+		return nil
+	}
+	out := make([]inputRef, len(ins))
+	for i, in := range ins {
+		out[i] = inputRef{Hack: in.Client, Name: in.Name, In: in}
+	}
+	return out
 }
