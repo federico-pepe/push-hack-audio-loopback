@@ -85,14 +85,16 @@ func main() {
 	}
 	st := &mixStats{}
 	st.setState("waiting for the card")
-	go runMixer(srv, st, quit)
+	ctl := newOutputCtl(filepath.Join(hackDir, modeFile))
+	log.Printf("output mode: %s", ctl.Mode())
+	go runOutput(ctl, srv, st, quit)
 
 	hcfg, err := hackcfg.Load(*configPath, defaultWebPort)
 	if err != nil {
 		log.Printf("%v (web port %d)", err, defaultWebPort)
 		hcfg.Port = defaultWebPort
 	}
-	go runWeb(hcfg.Port, srv, st, quit)
+	go runWeb(hcfg.Port, srv, st, ctl, quit)
 
 	<-quit
 	log.Print("stopping")

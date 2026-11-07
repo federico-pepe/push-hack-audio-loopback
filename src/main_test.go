@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/federico-pepe/ableton-push-hack/core/audiobus"
@@ -48,8 +49,12 @@ func TestStatusNeverHasNilClients(t *testing.T) {
 	st := &mixStats{}
 	st.setState("waiting for the card")
 	srv := audiobus.NewServer(t.TempDir())
-	s := status(srv, st)
+	ctl := newOutputCtl(filepath.Join(t.TempDir(), modeFile))
+	s := status(srv, st, ctl)
 	if s.Clients == nil || s.Running || s.State != "waiting for the card" {
 		t.Errorf("status = %+v", s)
+	}
+	if s.Mode != modeCard || s.Link.Enabled || s.Link.Sinks == nil {
+		t.Errorf("link status = %+v mode=%q", s.Link, s.Mode)
 	}
 }

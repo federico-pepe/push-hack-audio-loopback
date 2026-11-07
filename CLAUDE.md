@@ -66,3 +66,27 @@ instead of opening the card; without a mixer they write to the card themselves.
 - `web.go` serves `GET /api/status` and a status page. The port comes from the catalog (`hackcfg`), 7719 as a fallback.
 - Pairs are saved in `audio-bus-pairs.json` next to `hack.json`.
 - Design and plan: `docs/audio-bus.md` in ableton-push-hack.
+
+## Link Audio mode (`link.go`, `linkshim.cpp`, `link_cgo.go`)
+
+The web page switches the output between the loopback card ("card", `mixer.go`) and Ableton
+Link Audio ("link", `link.go`). The mode is saved in `output-mode.json` next to `hack.json`.
+`runOutput` runs one of them and swaps them when `POST /api/mode` changes it.
+
+- The hacks do not change. In Link mode the bus server has a fixed format (44100 Hz, period 128,
+  16 channels = 8 pairs). `runLink` calls `Server.Mix`, reads each client's pair, and writes it to
+  one Link sink named after the client. Nothing is mixed across hacks. No `core/` change was needed.
+- Stamp every buffer with a sample counter (`pl_sink_write`), starting at "now + 40 ms", and restart
+  it only when it drifts more than 10 ms. Live ignores buffers that carry its own timestamps. A stamp
+  taken from the clock on each buffer plays with glitches. Seen on a Push 3 (2026-11-05).
+- Never set the Link tempo or transport. The peer only follows the session.
+- Link (`src/third_party/link`, tag `Link-4.1.1`) is a git submodule with its own asio submodule. It lives
+  under `src/` because the release workflow mounts only `src/` into Docker. The checkout needs
+  `submodules: recursive`.
+- **glibc:** Push 3 has glibc 2.35, the Docker image has 2.36. A static libstdc++ from this image asks
+  for `arc4random` (2.36) and the loader refuses the binary ("version GLIBC_2.36 not found"). The shim
+  defines its own `arc4random`. `make build` and the release workflow fail on any glibc symbol above 2.35.
+- The binary needs the loader path `/lib/ld-linux-x86-64.so.2` (the Push has no `/lib64`). The Makefile sets it.
+- `link_stub.go` and the build tag in `linkshim.cpp` keep `go vet` and `go test` working off-device.
+- Link is GPL v2 or later: the binary is GPL v2 or later. The repository has no licence file. Decide before a release.
+- Plan and results: `plans/2026-11-05-link-audio-for-hacks.md` in ableton-push-hack.

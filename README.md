@@ -57,9 +57,42 @@ The design is in
 [docs/audio-bus.md](https://github.com/federico-pepe/ableton-push-hack/blob/main/docs/audio-bus.md)
 in the main repository.
 
+## Link Audio mode
+
+The web page has a switch with two values: **Virtual Audio Interface** and **Link**. The
+default is the Virtual Audio Interface, which is the mixer that this page describes above.
+The choice is saved in `output-mode.json`, next to `hack.json`.
+
+In **Link** mode the hack does not write the loopback card. It joins Ableton Link as the
+peer `PushHack`. Each audio hack that connects to the bus gets its own Link Audio channel,
+named after the hack. Live keeps the sound card of the Push as its output at all times.
+
+- In Live, turn on Link and Link Audio. Give an audio track the input type `PushHack`, pick
+  the channel of the hack, and set Monitor to In.
+- The hacks do not change. They use the same bus as before. The format is fixed:
+  stereo, 44100 Hz, 128 frames per block.
+- The page shows `Link: N peers`, as Live does, and tells you if Live listens to each channel.
+- Switching the mode drops the hacks for a moment. They reconnect by themselves.
+- The kernel module still loads in both modes, so the virtual card stays in the device list of Live.
+- Known issue: after a restart of the service, hacks can drift against the clock of Live.
+  Press play in Live. The cause is in the hacks (see the plan in the main repository).
+
+Each channel is stamped with a sample counter that starts 40 ms after "now". Live ignores
+buffers that carry its own timestamps, and it plays a clock-stamped stream with glitches.
+The code is in `src/linkshim.cpp` and `src/link.go`.
+
+**Licence note.** The Link SDK (`src/third_party/link`, pinned to tag `Link-4.1.1`) is
+GPL v2 or later, or proprietary from Ableton. A binary that links it is GPL v2 or later.
+This repository has no licence file yet. This must be decided before a release.
+
+The plan is `plans/2026-11-05-link-audio-for-hacks.md` in the main repository
+([ableton-push-hack](https://github.com/federico-pepe/ableton-push-hack)).
+
 ## Building
 
-The mixer needs cgo and libasound, so build in Docker (like push-braids):
+The mixer needs cgo and libasound, and the Link mode needs a C++17 compiler. Clone with
+`--recurse-submodules` (Link and its asio submodule are in `src/third_party/link`). Build in
+Docker (like push-braids):
 
 ```bash
 make build       # build/push-audio-loopback, linux/amd64, via Docker

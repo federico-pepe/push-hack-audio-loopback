@@ -18,6 +18,12 @@ h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);
 table{width:100%;border-collapse:collapse}
 th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
 th{color:var(--dim);font-weight:500}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:8px 0 4px}
+.seg button{background:var(--bg);color:var(--dim);border:0;padding:6px 12px;font:inherit;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button.on{background:var(--bar);color:#fff}
+.seg button:disabled{cursor:wait;opacity:.6}
+#peers{font-size:13px;margin-top:4px}
 .meter{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;width:120px}
 .meter i{display:block;height:100%;background:var(--bar);width:0}
 </style>
@@ -28,27 +34,62 @@ th{color:var(--dim);font-weight:500}
   <h1>AUDIO LOOPBACK</h1>
   <div id="state">connecting...</div>
   <div class="note" id="fmt"></div>
+  <div class="seg" id="seg">
+    <button data-mode="card">Virtual Audio Interface</button>
+    <button data-mode="link">Link</button>
+  </div>
+  <div id="peers"></div>
+  <div class="note" id="modeerr"></div>
 </section>
 <section>
-  <h2>Audio hacks on the mixer</h2>
+  <h2 id="tblhead">Audio hacks on the mixer</h2>
   <table>
-    <thead><tr><th>Hack</th><th>Channels</th><th>Level</th><th>Underruns</th></tr></thead>
+    <thead><tr><th>Hack</th><th id="chhead">Channels</th><th>Level</th><th>Underruns</th></tr></thead>
     <tbody id="clients"></tbody>
   </table>
   <p class="note" id="none"></p>
-  <p class="note">Each audio hack plays through this mixer, so several can play at once. Pick the channel pair in the hack's own page. In Live, enable the pair on the Push Hack Virtual Audio input and give a track that input.</p>
+  <p class="note" id="help"></p>
 </section>
 </main>
 <script>
 const $=id=>document.getElementById(id);
+let switching=false;
+async function setMode(m){
+  if(switching)return;
+  switching=true;document.querySelectorAll('#seg button').forEach(b=>b.disabled=true);
+  $('modeerr').textContent='';
+  try{
+    const r=await fetch('/api/mode',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:m})});
+    if(!r.ok)$('modeerr').textContent=(await r.text()).trim();
+  }catch(e){$('modeerr').textContent='no answer'}
+  switching=false;document.querySelectorAll('#seg button').forEach(b=>b.disabled=false);
+  tick();
+}
+document.querySelectorAll('#seg button').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
 function draw(s){
-  const el=$('state');el.textContent=s.running?'Mixer running':'Mixer: '+s.state;el.className=s.running?'ok':'bad';
-  $('fmt').textContent=s.running?s.channels+' channels, '+s.rate+' Hz, '+s.period+' frames per block. Slowest mix '+s.worst_mix_us+' us. Write errors '+s.write_errors+'.':'';
+  const link=s.mode==='link';
+  document.querySelectorAll('#seg button').forEach(b=>b.classList.toggle('on',b.dataset.mode===s.mode));
+  const el=$('state');
+  el.textContent=s.running?(link?'Link Audio running':'Mixer running'):(link?'Link: ':'Mixer: ')+s.state;
+  el.className=s.running?'ok':'bad';
+  $('fmt').textContent=s.running?(link?'':s.channels+' channels, ')+s.rate+' Hz, '+s.period+' frames per block. Slowest block '+s.worst_mix_us+' us. Write errors '+s.write_errors+'.':'';
+  const pe=$('peers');
+  if(link&&s.link.enabled){
+    const n=s.link.peers;
+    pe.textContent='Link: '+n+(n===1?' peer':' peers')+(n>0&&s.link.tempo?' - '+s.link.tempo.toFixed(2)+' BPM':'');
+  }else pe.textContent='';
+  $('tblhead').textContent=link?'Audio hacks on Link':'Audio hacks on the mixer';
+  $('chhead').textContent=link?'Link channel':'Channels';
+  $('help').textContent=link
+    ?'Each audio hack is its own Link Audio channel of the peer PushHack. In Live, turn on Link and Link Audio, then give an audio track the input type PushHack and pick the hack by name. Live keeps the sound card of the Push as its output. The Virtual Audio Interface is not used.'
+    :'Each audio hack plays through this mixer, so several can play at once. Pick the channel pair in the hack\'s own page. In Live, enable the pair on the Push Hack Virtual Audio input and give a track that input.';
   const tb=$('clients');tb.innerHTML='';
   s.clients.forEach(c=>{
     const tr=document.createElement('tr');
     const name=document.createElement('td');name.textContent=c.name;
-    const ch=document.createElement('td');ch.textContent=(c.pair+1)+'-'+(c.pair+2);
+    const ch=document.createElement('td');
+    if(link){const k=(s.link.sinks||[]).find(x=>x.name===c.name);ch.textContent=k?(k.listening?'listening':'no listener'):'-'}
+    else ch.textContent=(c.pair+1)+'-'+(c.pair+2);
     const lv=document.createElement('td');lv.innerHTML='<span class="meter"><i></i></span>';lv.querySelector('i').style.width=Math.min(100,c.peak*100)+'%';
     const un=document.createElement('td');un.textContent=c.underruns;
     tr.append(name,ch,lv,un);tb.append(tr);

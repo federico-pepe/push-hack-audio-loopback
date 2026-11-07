@@ -19,7 +19,9 @@ build:
 	@mkdir -p $(BUILD_DIR)
 	$(DOCKER) sh -c "$(APT) && \
 	  CGO_ENABLED=1 go build -ldflags '-s -w -linkmode external -extldflags -Wl,--dynamic-linker=/lib/ld-linux-x86-64.so.2' -o ../$(BUILD_DIR)/$(BINARY) . && \
-	  chmod +x ../$(BUILD_DIR)/$(BINARY)"
+	  chmod +x ../$(BUILD_DIR)/$(BINARY) && \
+	  ! objdump -T ../$(BUILD_DIR)/$(BINARY) | grep -E 'GLIBC_2\.(3[6-9]|[4-9][0-9])' || \
+	  { echo 'ERROR: binary needs a glibc newer than 2.35 (Push 3 has 2.35)'; exit 1; }"
 	@cp $(BUILD_DIR)/$(BINARY) $(BINARY)
 	@echo "Done: $(BINARY)"
 
