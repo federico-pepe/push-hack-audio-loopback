@@ -88,7 +88,7 @@ Link is the default (a missing or bad `output-mode.json` means "link"). `runOutp
   defines its own `arc4random`. `make build` and the release workflow fail on any glibc symbol above 2.35.
 - The binary needs the loader path `/lib/ld-linux-x86-64.so.2` (the Push has no `/lib64`). The Makefile sets it.
 - `link_stub.go` and the build tag in `linkshim.cpp` keep `go vet` and `go test` working off-device.
-- Link is GPL v2 or later: the binary is GPL v2 or later. The repository has no licence file. Decide before a release.
+- Link is GPL v2 or later, so the binary is GPL v2 or later. The repository is GPL v2 or later (`LICENSE`).
 - Plan and results: `plans/2026-11-05-link-audio-for-hacks.md` in ableton-push-hack.
 
 ## Link inputs (`router.go`, `jitter.go`, `linkshim.cpp`, `linkrec.go`)
