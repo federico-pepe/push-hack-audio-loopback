@@ -98,9 +98,9 @@ and the channels of the hacks), the columns are the inputs of the hacks. Click a
 Test tools (run by hand over SSH, not part of the service): `push-audio-loopback -linkrec "<channel name>" -secs 20 -out /tmp/rec.wav` records one Link channel to a WAV file.
 `abusrec` (in `core/audiobus/cmd`) records an input of a route to a WAV file.
 
-**Licence note.** The Link SDK (`src/third_party/link`, pinned to tag `Link-4.1.1`) is
-GPL v2 or later, or proprietary from Ableton. A binary that links it is GPL v2 or later.
-This repository has no licence file yet. This must be decided before a release.
+**Licence.** GNU General Public License, version 2 or later (see `LICENSE`). The Link SDK
+(`src/third_party/link`, pinned to tag `Link-4.1.1`) is GPL v2 or later, or proprietary from Ableton,
+and a binary that links it is GPL v2 or later. The same licence covers the rest of this repository.
 
 The plan is `plans/2026-11-05-link-audio-for-hacks.md` in the main repository
 ([ableton-push-hack](https://github.com/federico-pepe/ableton-push-hack)).
