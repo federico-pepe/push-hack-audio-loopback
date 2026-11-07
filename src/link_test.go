@@ -6,20 +6,20 @@ import (
 	"testing"
 )
 
-func TestOutputCtlDefaultsToCard(t *testing.T) {
+func TestOutputCtlDefaultsToLink(t *testing.T) {
 	c := newOutputCtl(filepath.Join(t.TempDir(), modeFile))
-	if c.Mode() != modeCard {
-		t.Errorf("mode = %q, want card", c.Mode())
+	if c.Mode() != modeLink {
+		t.Errorf("mode = %q, want link", c.Mode())
 	}
 }
 
 func TestOutputCtlSavesAndLoads(t *testing.T) {
 	p := filepath.Join(t.TempDir(), modeFile)
 	c := newOutputCtl(p)
-	if err := c.SetMode(modeLink); err != nil {
+	if err := c.SetMode(modeCard); err != nil {
 		t.Fatal(err)
 	}
-	if c.Mode() != modeLink {
+	if c.Mode() != modeCard {
 		t.Errorf("mode = %q", c.Mode())
 	}
 	select {
@@ -27,14 +27,14 @@ func TestOutputCtlSavesAndLoads(t *testing.T) {
 	default:
 		t.Error("SetMode did not wake the supervisor")
 	}
-	if got := newOutputCtl(p).Mode(); got != modeLink {
-		t.Errorf("reloaded mode = %q, want link", got)
+	if got := newOutputCtl(p).Mode(); got != modeCard {
+		t.Errorf("reloaded mode = %q, want card", got)
 	}
 }
 
 func TestOutputCtlSameModeDoesNotWake(t *testing.T) {
 	c := newOutputCtl(filepath.Join(t.TempDir(), modeFile))
-	if err := c.SetMode(modeCard); err != nil {
+	if err := c.SetMode(modeLink); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -49,7 +49,7 @@ func TestOutputCtlRejectsBadMode(t *testing.T) {
 	if err := c.SetMode("jack"); err == nil {
 		t.Error("bad mode accepted")
 	}
-	if c.Mode() != modeCard {
+	if c.Mode() != modeLink {
 		t.Errorf("mode changed to %q", c.Mode())
 	}
 }
@@ -59,14 +59,14 @@ func TestOutputCtlIgnoresBadFile(t *testing.T) {
 	if err := os.WriteFile(p, []byte(`{"mode":"nonsense"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := newOutputCtl(p).Mode(); got != modeCard {
-		t.Errorf("mode = %q, want card", got)
+	if got := newOutputCtl(p).Mode(); got != modeLink {
+		t.Errorf("mode = %q, want link", got)
 	}
 	if err := os.WriteFile(p, []byte(`not json`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := newOutputCtl(p).Mode(); got != modeCard {
-		t.Errorf("mode = %q, want card", got)
+	if got := newOutputCtl(p).Mode(); got != modeLink {
+		t.Errorf("mode = %q, want link", got)
 	}
 }
 

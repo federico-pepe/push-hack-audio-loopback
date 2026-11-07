@@ -7,6 +7,7 @@ package main
 //   "link": each hack gets its own Link Audio channel (linkshim.cpp). Live
 //           lists them under the peer "PushHack". The card is not touched.
 // The web page switches between them. The choice is saved next to hack.json.
+// Link is the default.
 //
 // In Link mode the audiobus server still does the work for the hacks: they
 // connect, write into rings, and read the format. Here the format is fixed and
@@ -72,10 +73,10 @@ type modeDisk struct {
 
 func validMode(m string) bool { return m == modeCard || m == modeLink }
 
-// newOutputCtl loads the saved mode. A missing or bad file means "card".
+// newOutputCtl loads the saved mode. A missing or bad file means "link".
 func newOutputCtl(path string) *outputCtl {
 	c := &outputCtl{path: path, changed: make(chan struct{}, 1)}
-	c.mode.Store(modeCard)
+	c.mode.Store(modeLink)
 	if b, err := os.ReadFile(path); err == nil {
 		var d modeDisk
 		if json.Unmarshal(b, &d) == nil && validMode(d.Mode) {

@@ -60,7 +60,7 @@ in the main repository.
 ## Link Audio mode
 
 The web page has a switch with two values: **Virtual Audio Interface** and **Link**. The
-default is the Virtual Audio Interface, which is the mixer that this page describes above.
+default is **Link**. The Virtual Audio Interface is the mixer that this page describes above.
 The choice is saved in `output-mode.json`, next to `hack.json`.
 
 In **Link** mode the hack does not write the loopback card. It joins Ableton Link as the

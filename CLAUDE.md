@@ -71,7 +71,7 @@ instead of opening the card; without a mixer they write to the card themselves.
 
 The web page switches the output between the loopback card ("card", `mixer.go`) and Ableton
 Link Audio ("link", `link.go`). The mode is saved in `output-mode.json` next to `hack.json`.
-`runOutput` runs one of them and swaps them when `POST /api/mode` changes it.
+Link is the default (a missing or bad `output-mode.json` means "link"). `runOutput` runs one of them and swaps them when `POST /api/mode` changes it.
 
 - The hacks do not change. In Link mode the bus server has a fixed format (44100 Hz, period 128,
   16 channels = 8 pairs). `runLink` calls `Server.Mix`, reads each client's pair, and writes it to

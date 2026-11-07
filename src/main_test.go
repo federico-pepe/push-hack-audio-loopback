@@ -54,7 +54,7 @@ func TestStatusNeverHasNilClients(t *testing.T) {
 	if s.Clients == nil || s.Running || s.State != "waiting for the card" {
 		t.Errorf("status = %+v", s)
 	}
-	if s.Mode != modeCard || s.Link.Enabled || s.Link.Sinks == nil {
+	if s.Mode != modeLink || s.Link.Enabled || s.Link.Sinks == nil {
 		t.Errorf("link status = %+v mode=%q", s.Link, s.Mode)
 	}
 }

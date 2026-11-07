@@ -7,7 +7,7 @@
   "binary": "push-audio-loopback",
   "enabled": true,
   "web_ui": {
-    "label": "Audio Loopback",
+    "label": "Audio",
     "path": "/"
   }
 }
