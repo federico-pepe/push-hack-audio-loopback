@@ -56,7 +56,16 @@ const (
 
 func main() {
 	configPath := flag.String("config", "hack.json", "path to hack.json config file")
+	linkrec := flag.String("linkrec", "", "test tool: record the Link channel whose name contains this text, then exit")
+	recSecs := flag.Int("secs", 20, "with -linkrec: seconds to record")
+	recOut := flag.String("out", "rec.wav", "with -linkrec: WAV file to write")
 	flag.Parse()
+	if *linkrec != "" {
+		if err := runLinkRec(*linkrec, *recSecs, *recOut); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	hackDir := filepath.Dir(*configPath)
 
 	alsaseq.WaitForBootSettle()
@@ -85,14 +94,17 @@ func main() {
 	}
 	st := &mixStats{}
 	st.setState("waiting for the card")
-	go runMixer(srv, st, quit)
+	ctl := newOutputCtl(filepath.Join(hackDir, modeFile))
+	ctl.routes = newRouteStore(filepath.Join(hackDir, routesFile))
+	log.Printf("output mode: %s", ctl.Mode())
+	go runOutput(ctl, srv, st, quit)
 
 	hcfg, err := hackcfg.Load(*configPath, defaultWebPort)
 	if err != nil {
 		log.Printf("%v (web port %d)", err, defaultWebPort)
 		hcfg.Port = defaultWebPort
 	}
-	go runWeb(hcfg.Port, srv, st, quit)
+	go runWeb(hcfg.Port, srv, st, ctl, quit)
 
 	<-quit
 	log.Print("stopping")

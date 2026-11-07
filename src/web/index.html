@@ -2,63 +2,328 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Audio Loopback</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Audio</title>
 <style>
-:root{--bg:#15171a;--panel:#1d2024;--line:#2c3036;--text:#d9dde2;--dim:#8b929b;--ok:#5bd778;--bad:#ff5a5a;--bar:#ff6a1a}
-@media (prefers-color-scheme:light){:root{--bg:#e9eaec;--panel:#f6f6f7;--line:#c9ccd1;--text:#1d2024;--dim:#5d646d;--ok:#1f8a3b;--bad:#c62828;--bar:#d9500a}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 system-ui,sans-serif}
-main{max-width:720px;margin:0 auto;padding:16px;display:grid;gap:16px}
-section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px}
-h1{font-size:15px;margin:0 0 4px;letter-spacing:.08em}
-h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 10px}
-.note{color:var(--dim);font-size:12px}
-#state.ok{color:var(--ok)} #state.bad{color:var(--bad)}
-table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:6px 4px;border-bottom:1px solid var(--line);font-size:13px}
-th{color:var(--dim);font-weight:500}
-.meter{height:6px;background:var(--bg);border-radius:3px;overflow:hidden;width:120px}
-.meter i{display:block;height:100%;background:var(--bar);width:0}
+/* Same look as Push Manager (hacks/push-manager/src/ui/app.css): dark, one blue accent. */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { height: 100%; -webkit-tap-highlight-color: transparent; }
+:root {
+  --black:    rgb(228, 228, 235);   /* primary text (light on dark) */
+  --blue:     rgb(0, 100, 255);     /* accent / links */
+  --grey:     rgb(42, 42, 46);      /* surfaces / borders */
+  --grey-mid: rgb(140, 140, 150);   /* secondary text */
+  --white:    rgb(22, 22, 24);      /* page background (dark) */
+  --red:      rgb(254, 89, 72);
+  --green:    rgb(103, 194, 58);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bot: env(safe-area-inset-bottom, 0px);
+  --px:       20px;
+}
+body {
+  min-height: 100%;
+  background: var(--white);
+  color: var(--black);
+  font-family: "Ableton Sans", ui-sans-serif, system-ui, -apple-system,
+               BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Header */
+#header {
+  border-bottom: 1px solid var(--grey);
+  position: sticky; top: 0; z-index: 20;
+  background: var(--white);
+  padding: var(--safe-top) var(--px) 0;
+}
+.header-inner { display: flex; align-items: center; height: 52px; gap: 12px; }
+.back {
+  font-size: 14px; font-weight: 500; color: var(--blue); text-decoration: none;
+  white-space: nowrap; flex-shrink: 0;
+}
+.back:hover { opacity: 0.7; }
+.header-sep { color: var(--grey-mid); font-size: 14px; flex-shrink: 0; }
+.crumb { font-size: 14px; white-space: nowrap; padding: 4px 2px; color: var(--black); font-weight: 500; }
+
+/* Page */
+main { padding: 16px var(--px) calc(40px + var(--safe-bot)); max-width: 760px; margin: 0 auto; display: grid; gap: 16px; }
+section { background: var(--grey); padding: 16px 20px; }
+h2 {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--grey-mid); margin-bottom: 12px;
+}
+.note { color: var(--grey-mid); font-size: 13px; margin-top: 8px; }
+#state { font-size: 16px; font-weight: 500; }
+#state.ok { color: var(--green); }
+#state.bad { color: var(--red); }
+#peers { font-size: 14px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+
+/* Mode switch */
+.seg { display: inline-flex; margin-top: 14px; border: 1px solid var(--grey-mid); }
+.seg button {
+  background: none; color: var(--grey-mid); border: 0; padding: 8px 16px;
+  font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; transition: color 0.1s, background 0.1s;
+}
+.seg button + button { border-left: 1px solid var(--grey-mid); }
+.seg button:hover { color: var(--black); }
+.seg button.on { background: var(--blue); color: #fff; }
+.seg button:disabled { cursor: wait; opacity: 0.6; }
+#modeerr { color: var(--red); }
+
+/* Table */
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 6px 8px 0; border-bottom: 1px solid var(--white); font-size: 14px; }
+th { color: var(--grey-mid); font-weight: 500; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+td { font-variant-numeric: tabular-nums; }
+.meter { height: 6px; background: var(--white); overflow: hidden; width: 120px; }
+.meter i { display: block; height: 100%; background: var(--green); width: 0; }
+.listen { color: var(--green); }
+.nolisten { color: var(--grey-mid); }
+
+/* Matrix: Link channels (rows) to the inputs of the hacks (columns) */
+#matrixsec[hidden] { display: none; }
+.mx { overflow-x: auto; }
+.mx table { width: auto; min-width: 100%; }
+.mx th, .mx td { text-align: center; padding: 8px 10px; white-space: nowrap; }
+.mx th:first-child, .mx td:first-child { text-align: left; padding-left: 0; }
+.mx th small { display: block; text-transform: none; letter-spacing: 0; font-size: 11px; }
+.mx tr.peer td { color: var(--grey-mid); font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; padding-top: 14px; }
+.mx tr.gone td:first-child { color: var(--red); }
+.mx tr.stat td { font-size: 12px; color: var(--grey-mid); vertical-align: top; }
+.mx tr.stat td:first-child { text-transform: uppercase; letter-spacing: 0.04em; font-weight: 600; }
+.mx .away { opacity: 0.5; }
+.dot {
+  width: 20px; height: 20px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: none; border: 1px solid var(--grey-mid); transition: background 0.1s, border-color 0.1s;
+}
+.dot:hover { border-color: var(--blue); }
+.dot.on { background: var(--blue); border-color: var(--blue); }
+.mx .bad { color: var(--red); }
+.mx .okc { color: var(--green); }
 </style>
 </head>
 <body>
+
+<div id="header">
+  <div class="header-inner">
+    <a class="back" id="back" href="/">&lsaquo; Back</a>
+    <span class="header-sep">&rsaquo;</span>
+    <span class="crumb">Audio</span>
+  </div>
+</div>
+
 <main>
 <section>
-  <h1>AUDIO LOOPBACK</h1>
+  <h2>Output</h2>
   <div id="state">connecting...</div>
   <div class="note" id="fmt"></div>
+  <div class="seg" id="seg">
+    <button data-mode="card">Virtual Audio Interface</button>
+    <button data-mode="link">Link</button>
+  </div>
+  <div id="peers"></div>
+  <div class="note" id="modeerr"></div>
 </section>
 <section>
-  <h2>Audio hacks on the mixer</h2>
+  <h2 id="tblhead">Audio hacks on the mixer</h2>
   <table>
-    <thead><tr><th>Hack</th><th>Channels</th><th>Level</th><th>Underruns</th></tr></thead>
+    <thead><tr><th>Hack</th><th id="chhead">Channels</th><th>Level</th><th>Underruns</th></tr></thead>
     <tbody id="clients"></tbody>
   </table>
   <p class="note" id="none"></p>
-  <p class="note">Each audio hack plays through this mixer, so several can play at once. Pick the channel pair in the hack's own page. In Live, enable the pair on the Push Hack Virtual Audio input and give a track that input.</p>
+  <p class="note" id="help"></p>
+</section>
+<section id="matrixsec" hidden>
+  <h2>Link inputs</h2>
+  <div class="mx" id="matrix"></div>
+  <p class="note" id="matrixnote"></p>
+  <p class="note" id="matrixerr" style="color:var(--red)"></p>
 </section>
 </main>
+
 <script>
-const $=id=>document.getElementById(id);
-function draw(s){
-  const el=$('state');el.textContent=s.running?'Mixer running':'Mixer: '+s.state;el.className=s.running?'ok':'bad';
-  $('fmt').textContent=s.running?s.channels+' channels, '+s.rate+' Hz, '+s.period+' frames per block. Slowest mix '+s.worst_mix_us+' us. Write errors '+s.write_errors+'.':'';
-  const tb=$('clients');tb.innerHTML='';
-  s.clients.forEach(c=>{
-    const tr=document.createElement('tr');
-    const name=document.createElement('td');name.textContent=c.name;
-    const ch=document.createElement('td');ch.textContent=(c.pair+1)+'-'+(c.pair+2);
-    const lv=document.createElement('td');lv.innerHTML='<span class="meter"><i></i></span>';lv.querySelector('i').style.width=Math.min(100,c.peak*100)+'%';
-    const un=document.createElement('td');un.textContent=c.underruns;
-    tr.append(name,ch,lv,un);tb.append(tr);
+const $ = id => document.getElementById(id);
+
+// Back goes to Push Manager, on its own port.
+$('back').href = '//' + location.hostname + ':7701/';
+
+let switching = false;
+async function setMode(m) {
+  if (switching) return;
+  switching = true;
+  document.querySelectorAll('#seg button').forEach(b => b.disabled = true);
+  $('modeerr').textContent = '';
+  try {
+    const r = await fetch('/api/mode', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({mode: m})});
+    if (!r.ok) $('modeerr').textContent = (await r.text()).trim();
+  } catch (e) { $('modeerr').textContent = 'no answer'; }
+  switching = false;
+  document.querySelectorAll('#seg button').forEach(b => b.disabled = false);
+  tick();
+}
+document.querySelectorAll('#seg button').forEach(b => b.onclick = () => setMode(b.dataset.mode));
+
+function draw(s) {
+  const link = s.mode === 'link';
+  document.querySelectorAll('#seg button').forEach(b => b.classList.toggle('on', b.dataset.mode === s.mode));
+  const el = $('state');
+  el.textContent = s.running ? (link ? 'Link Audio running' : 'Mixer running') : (link ? 'Link: ' : 'Mixer: ') + s.state;
+  el.className = s.running ? 'ok' : 'bad';
+  $('fmt').textContent = s.running
+    ? (link ? '' : s.channels + ' channels, ') + s.rate + ' Hz, ' + s.period + ' frames per block. Slowest block ' + s.worst_mix_us + ' us. Write errors ' + s.write_errors + '.'
+    : '';
+  const pe = $('peers');
+  if (link && s.link.enabled) {
+    const n = s.link.peers;
+    pe.textContent = 'Link: ' + n + (n === 1 ? ' peer' : ' peers') + (n > 0 && s.link.tempo ? ' - ' + s.link.tempo.toFixed(2) + ' BPM' : '');
+  } else pe.textContent = '';
+  $('tblhead').textContent = link ? 'Audio hacks on Link' : 'Audio hacks on the mixer';
+  $('chhead').textContent = link ? 'Link channel' : 'Channels';
+  $('help').textContent = link
+    ? 'Each audio hack is its own Link Audio channel of the peer PushHack. In Live, turn on Link and Link Audio, then give an audio track the input type PushHack and pick the hack by name. Live keeps the sound card of the Push as its output. The Virtual Audio Interface is not used.'
+    : 'Each audio hack plays through this mixer, so several can play at once. Pick the channel pair in the hack\'s own page. In Live, enable the pair on the Push Hack Virtual Audio input and give a track that input.';
+  const tb = $('clients');
+  tb.innerHTML = '';
+  s.clients.forEach(c => {
+    const tr = document.createElement('tr');
+    const name = document.createElement('td'); name.textContent = c.name;
+    const ch = document.createElement('td');
+    if (link) {
+      const k = (s.link.sinks || []).find(x => x.name === c.name);
+      ch.textContent = k ? (k.listening ? 'listening' : 'no listener') : '-';
+      ch.className = k && k.listening ? 'listen' : 'nolisten';
+    } else ch.textContent = (c.pair + 1) + '-' + (c.pair + 2);
+    const lv = document.createElement('td');
+    lv.innerHTML = '<span class="meter"><i></i></span>';
+    lv.querySelector('i').style.width = Math.min(100, c.peak * 100) + '%';
+    const un = document.createElement('td'); un.textContent = c.underruns;
+    tr.append(name, ch, lv, un);
+    tb.append(tr);
   });
-  $('none').textContent=s.clients.length?'':'No audio hack is connected.';
+  $('none').textContent = s.clients.length ? '' : 'No audio hack is connected.';
 }
-async function tick(){
-  try{draw(await fetch('/api/status').then(r=>r.json()))}catch(e){$('state').textContent='no answer';$('state').className='bad'}
+
+// ---- matrix: names come from other devices, so the DOM is built with textContent only ----
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
 }
-tick();setInterval(tick,1000);
+
+async function setRoute(hack, input, channelId) {
+  $('matrixerr').textContent = '';
+  try {
+    const r = await fetch('/api/route', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({hack, input, channel_id: channelId})});
+    if (!r.ok) $('matrixerr').textContent = (await r.text()).trim();
+  } catch (e) { $('matrixerr').textContent = 'no answer'; }
+  tick();
+}
+
+function stateText(rt) {
+  if (!rt) return ['', ''];
+  if (rt.state === 'ok') return ['ok', 'okc'];
+  if (rt.state === 'waiting' || rt.state === 'hack not connected') return [rt.state, ''];
+  return [rt.state, 'bad'];
+}
+
+function drawMatrix(m, link) {
+  const sec = $('matrixsec');
+  sec.hidden = !link;
+  if (!link) return;
+  const box = $('matrix');
+  box.textContent = '';
+  const cols = m.inputs || [];
+  if (!cols.length) {
+    $('matrixnote').textContent = 'No hack has an audio input yet. A hack declares its inputs when it connects.';
+    return;
+  }
+  $('matrixnote').textContent = 'Click a dot to record that channel into a hack input. Nothing is connected until you do. In Live, pick the channels of the hacks in the input of an audio track.';
+
+  // Rows: channels grouped by peer, Push (Live) first. Routes whose channel is gone get a row of their own.
+  const peers = new Map();
+  (m.channels || []).forEach(c => {
+    if (!peers.has(c.peer)) peers.set(c.peer, []);
+    peers.get(c.peer).push({id: c.id, name: c.name, gone: false});
+  });
+  cols.forEach(c => {
+    const rt = c.route;
+    if (rt && rt.state === 'missing') {
+      if (!peers.has(rt.peer)) peers.set(rt.peer, []);
+      if (!peers.get(rt.peer).some(x => x.id === rt.channel_id))
+        peers.get(rt.peer).push({id: rt.channel_id, name: rt.channel, gone: true});
+    }
+  });
+  const order = [...peers.keys()].sort((a, b) => (a === 'Push' ? -1 : b === 'Push' ? 1 : a.localeCompare(b)));
+
+  const t = el('table');
+  const head = el('tr');
+  head.append(el('th', '', 'Channel'));
+  cols.forEach(c => {
+    const th = el('th', c.connected ? '' : 'away', c.hack);
+    th.append(el('small', '', c.input));
+    head.append(th);
+  });
+  t.append(head);
+
+  order.forEach(peer => {
+    const pr = el('tr', 'peer');
+    const pc = el('td', '', peer);
+    pc.colSpan = cols.length + 1;
+    pr.append(pc);
+    t.append(pr);
+    peers.get(peer).forEach(ch => {
+      const tr = el('tr', ch.gone ? 'gone' : '');
+      tr.append(el('td', '', ch.name + (ch.gone ? ' (missing)' : '')));
+      cols.forEach(c => {
+        const td = el('td', c.connected ? '' : 'away');
+        const on = c.route && c.route.channel_id === ch.id;
+        const b = el('button', 'dot' + (on ? ' on' : ''));
+        b.title = on ? 'Disconnect' : 'Connect';
+        b.setAttribute('aria-label', (on ? 'Disconnect ' : 'Connect ') + ch.name + ' to ' + c.hack + ' ' + c.input);
+        b.onclick = () => setRoute(c.hack, c.input, on ? null : ch.id);
+        td.append(b);
+        tr.append(td);
+      });
+      t.append(tr);
+    });
+  });
+
+  // Status row for each input.
+  const sr = el('tr', 'stat');
+  sr.append(el('td', '', 'Status'));
+  cols.forEach(c => {
+    const td = el('td', c.connected ? '' : 'away');
+    const rt = c.route;
+    if (!rt) { td.textContent = c.connected ? '-' : 'away'; }
+    else {
+      const [txt, cls] = stateText(rt);
+      td.append(el('div', cls, txt));
+      if (rt.state === 'ok' || rt.state === 'waiting') {
+        const mt = el('span', 'meter'); const i = el('i'); i.style.width = Math.min(100, rt.peak * 100) + '%';
+        mt.append(i); td.append(mt);
+        td.append(el('div', '', rt.underruns + ' underruns, ' + rt.dropped_frames + ' dropped'));
+        if (rt.refused) td.append(el('div', 'bad', rt.refused + ' refused by the hack'));
+      }
+    }
+    sr.append(td);
+  });
+  t.append(sr);
+  box.append(t);
+}
+
+async function tick() {
+  try {
+    const s = await fetch('/api/status').then(r => r.json());
+    draw(s);
+    if (s.mode === 'link') drawMatrix(await fetch('/api/matrix').then(r => r.json()), true);
+    else drawMatrix({}, false);
+  } catch (e) { $('state').textContent = 'no answer'; $('state').className = 'bad'; }
+}
+tick(); setInterval(tick, 1000);
 </script>
 </body>
 </html>

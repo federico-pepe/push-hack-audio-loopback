@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -25,30 +27,129 @@ type statusReply struct {
 	WriteErrors uint64                `json:"write_errors"`
 	WorstMixUs  int64                 `json:"worst_mix_us"`
 	Clients     []audiobus.ClientInfo `json:"clients"`
+	Mode        string                `json:"mode"` // "card" or "link"
+	Link        linkStatus            `json:"link"`
 }
 
-func status(srv *audiobus.Server, st *mixStats) statusReply {
+// linkStatus is what the page shows when the mode is "link".
+type linkStatus struct {
+	Enabled bool       `json:"enabled"`
+	Peers   int32      `json:"peers"` // other Link peers, as Live shows it
+	Tempo   float64    `json:"tempo"`
+	LeadMs  int        `json:"lead_ms"`
+	Error   string     `json:"error"`
+	Sinks   []sinkInfo `json:"sinks"`
+}
+
+func status(srv *audiobus.Server, st *mixStats, ctl *outputCtl) statusReply {
 	state := st.getState()
 	cl := srv.Clients()
 	if cl == nil {
 		cl = []audiobus.ClientInfo{}
 	}
+	errText, _ := ctl.linkErr.Load().(string)
 	return statusReply{
 		State: state, Running: state == "running",
 		Rate: st.rate.Load(), Period: st.period.Load(), Channels: st.channels.Load(),
 		Blocks: st.blocks.Load(), WriteErrors: st.errors.Load(),
 		WorstMixUs: st.worstNs.Load() / 1000, Clients: cl,
+		Mode: ctl.Mode(),
+		Link: linkStatus{
+			Enabled: ctl.linkOn.Load(), Peers: ctl.linkPeers.Load(),
+			Tempo:  math.Float64frombits(ctl.tempoBits.Load()),
+			LeadMs: linkLeadMs, Error: errText, Sinks: ctl.Sinks(),
+		},
 	}
 }
 
 // runWeb serves the status page until quit closes.
-func runWeb(port int, srv *audiobus.Server, st *mixStats, quit <-chan struct{}) {
+func runWeb(port int, srv *audiobus.Server, st *mixStats, ctl *outputCtl, quit <-chan struct{}) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", func(w http.ResponseWriter, r *http.Request) {
-		httpx.JSON(w, status(srv, st))
+		httpx.JSON(w, status(srv, st, ctl))
+	})
+	// POST /api/mode {"mode":"card"|"link"}. JSON only, so a form on another
+	// site cannot switch the output.
+	mux.HandleFunc("POST /api/mode", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "send application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var req struct {
+			Mode string `json:"mode"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&req); err != nil {
+			http.Error(w, "bad JSON", http.StatusBadRequest)
+			return
+		}
+		if err := ctl.SetMode(req.Mode); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		httpx.JSON(w, map[string]string{"mode": ctl.Mode()})
+	})
+	// GET /api/matrix: the Link channels, the inputs of the hacks and the routes.
+	mux.HandleFunc("GET /api/matrix", func(w http.ResponseWriter, r *http.Request) {
+		rt := ctl.router.Load()
+		if rt == nil {
+			httpx.JSON(w, matrixReply{Channels: []linkChannel{}, Inputs: []inputStatus{}})
+			return
+		}
+		httpx.JSON(w, rt.Matrix())
+	})
+	// POST /api/route {"hack","input","channel_id"}: connect an input to a
+	// channel. A null or empty channel_id removes the route. JSON only.
+	mux.HandleFunc("POST /api/route", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Content-Type") != "application/json" {
+			http.Error(w, "send application/json", http.StatusUnsupportedMediaType)
+			return
+		}
+		var req struct {
+			Hack      string  `json:"hack"`
+			Input     string  `json:"input"`
+			ChannelID *string `json:"channel_id"`
+		}
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil || req.Hack == "" || req.Input == "" {
+			http.Error(w, "bad JSON: hack and input are needed", http.StatusBadRequest)
+			return
+		}
+		if ctl.routes == nil {
+			http.Error(w, "no route store", http.StatusInternalServerError)
+			return
+		}
+		if req.ChannelID == nil || *req.ChannelID == "" {
+			if err := ctl.routes.remove(req.Hack, req.Input); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			httpx.JSON(w, map[string]bool{"ok": true})
+			return
+		}
+		rt := ctl.router.Load()
+		if rt == nil {
+			http.Error(w, "the output is not Link", http.StatusConflict)
+			return
+		}
+		var ch *linkChannel
+		for _, c := range rt.Channels() {
+			if c.ID == *req.ChannelID {
+				c := c
+				ch = &c
+				break
+			}
+		}
+		if ch == nil {
+			http.Error(w, "no such channel", http.StatusNotFound)
+			return
+		}
+		if err := ctl.routes.set(route{Hack: req.Hack, Input: req.Input, ChannelID: ch.ID, Peer: ch.Peer, Channel: ch.Name}); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		httpx.JSON(w, map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/", httpx.ServeEmbedded(webFS, "web/index.html"))
-	hs := httpx.NewServer(fmt.Sprintf(":%d", port), httpx.WithLogging(httpx.WithCORS("GET, OPTIONS", mux)))
+	hs := httpx.NewServer(fmt.Sprintf(":%d", port), httpx.WithLogging(httpx.WithCORS("GET, POST, OPTIONS", mux)))
 	go func() {
 		<-quit
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
